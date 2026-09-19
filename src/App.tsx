@@ -26,41 +26,86 @@ import {
   hasApiKey,
   getMaskedApiKey
 } from './services/gemini';
+import { fetchOfficialPoster } from './services/poster';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 
-const MoviePoster = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
-  const [error, setError] = useState(false);
+const MoviePoster = ({ 
+  src, 
+  alt, 
+  year, 
+  className 
+}: { 
+  src?: string; 
+  alt: string; 
+  year?: string; 
+  className?: string; 
+}) => {
+  const [imgSrc, setImgSrc] = useState<string>(src || '');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  // Basic check to see if the URL looks like a direct image link
-  const isLikelyImage = (url: string) => {
-    const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-    const lowerUrl = url.toLowerCase();
-    return extensions.some(ext => lowerUrl.includes(ext)) || lowerUrl.includes('image.tmdb.org') || lowerUrl.includes('media-amazon.com');
-  };
+  useEffect(() => {
+    let isMounted = true;
 
-  const displaySrc = (error || !isLikelyImage(src)) 
-    ? `https://picsum.photos/seed/${encodeURIComponent(alt)}/800/1200` 
-    : src;
+    async function resolvePoster() {
+      const isValidImage = src && (
+        src.includes('upload.wikimedia.org') ||
+        src.includes('image.tmdb.org') ||
+        src.includes('media-amazon.com') ||
+        /\.(jpg|jpeg|png|webp)/i.test(src)
+      );
+
+      if (isValidImage && !error) {
+        setImgSrc(src!);
+        return;
+      }
+
+      // Fetch official poster from Wikipedia API
+      try {
+        const official = await fetchOfficialPoster(alt, year);
+        if (isMounted && official) {
+          setImgSrc(official);
+          setError(false);
+          return;
+        }
+      } catch {}
+
+      if (isMounted && !imgSrc) {
+        setLoading(false);
+      }
+    }
+
+    resolvePoster();
+    return () => { isMounted = false; };
+  }, [src, alt, year, error]);
 
   return (
-    <div className={cn("relative overflow-hidden bg-surface-container", className)}>
-      {loading && <div className="absolute inset-0 animate-pulse bg-white/5" />}
-      <img
-        src={displaySrc}
-        alt={alt}
-        className={cn(
-          "w-full h-full object-cover transition-opacity duration-500",
-          loading ? "opacity-0" : "opacity-100"
-        )}
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setError(true);
-          setLoading(false);
-        }}
-        referrerPolicy="no-referrer"
-      />
+    <div className={cn("relative overflow-hidden bg-surface-container flex items-center justify-center", className)}>
+      {loading && <div className="absolute inset-0 animate-pulse bg-white/5 z-10" />}
+      
+      {imgSrc && !error ? (
+        <img
+          src={imgSrc}
+          alt={alt}
+          className={cn(
+            "w-full h-full object-cover transition-opacity duration-500",
+            loading ? "opacity-0" : "opacity-100"
+          )}
+          onLoad={() => setLoading(false)}
+          onError={() => {
+            setError(true);
+            setLoading(false);
+          }}
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-gradient-to-br from-slate-900 via-surface-container to-slate-950 border border-white/5">
+          <span className="material-symbols-outlined text-3xl text-primary/60 mb-2">movie</span>
+          <p className="font-headline font-bold text-xs uppercase text-slate-300 line-clamp-2">{alt}</p>
+          {year && <p className="text-[10px] text-slate-500 mt-1">{year}</p>}
+        </div>
+      )}
     </div>
   );
 };
@@ -164,11 +209,27 @@ export default function App() {
       const history = currentSession?.messages.map(m => ({ role: m.role, content: m.content })) || [];
       const result = await getMovieRecommendations(currentPrompt, history);
       
+      // Resolve authentic official posters for all recommended movies in parallel
+      const resolvedMovies = await Promise.all(
+        (result.recommendations || []).map(async (m: any, i: number) => {
+          let poster = m.posterUrl;
+          try {
+            const official = await fetchOfficialPoster(m.title, m.year);
+            if (official) poster = official;
+          } catch {}
+          return {
+            ...m,
+            id: `${Date.now()}-${i}`,
+            posterUrl: poster
+          };
+        })
+      );
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: result.analysis,
-        movies: result.recommendations?.map((m: any, i: number) => ({ ...m, id: `${Date.now()}-${i}` })) || [],
+        movies: resolvedMovies,
         timestamp: Date.now()
       };
 
@@ -415,6 +476,7 @@ export default function App() {
                                     <MoviePoster 
                                       src={movie.posterUrl} 
                                       alt={movie.title} 
+                                      year={movie.year}
                                       className="w-full md:w-48 aspect-[2/3] rounded-xl shrink-0" 
                                     />
                                     <div className="flex-1 flex flex-col justify-center py-2">
@@ -478,7 +540,8 @@ export default function App() {
                     <MoviePoster 
                       src={movie.posterUrl} 
                       alt={movie.title} 
-                      className="w-24 h-32 rounded-lg" 
+                      year={movie.year}
+                      className="w-24 h-32 rounded-lg shrink-0" 
                     />
                     <div>
                       <h4 className="font-headline font-bold text-on-surface uppercase">{movie.title}</h4>
@@ -548,6 +611,7 @@ export default function App() {
               <MoviePoster 
                 src={selectedMovie.posterUrl} 
                 alt={selectedMovie.title} 
+                year={selectedMovie.year}
                 className="w-full h-full" 
               />
               <div className="absolute inset-0 bg-gradient-to-t from-surface-container-low via-transparent to-transparent"></div>
