@@ -31,6 +31,14 @@ export function hasApiKey(): boolean {
   return Boolean(getStoredApiKey());
 }
 
+export function getMaskedApiKey(): string {
+  const key = getStoredApiKey();
+  if (!key) return '';
+  if (key.length <= 4) return '••••';
+  const last4 = key.slice(-4);
+  return `••••••••••••••••${last4}`;
+}
+
 function getAvailableApiKeys(): string[] {
   const keys: string[] = [];
   const stored = getStoredApiKey();

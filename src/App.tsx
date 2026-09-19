@@ -23,7 +23,8 @@ import {
   getStoredApiKey, 
   setStoredApiKey, 
   removeStoredApiKey, 
-  hasApiKey 
+  hasApiKey,
+  getMaskedApiKey
 } from './services/gemini';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
@@ -82,13 +83,16 @@ export default function App() {
   }, []);
 
   const handleOpenApiKeyModal = () => {
-    setApiKeyInput(getStoredApiKey());
+    setApiKeyInput('');
     setIsApiKeyModalOpen(true);
   };
 
   const handleSaveApiKey = () => {
-    setStoredApiKey(apiKeyInput.trim());
-    setHasKey(hasApiKey());
+    if (apiKeyInput.trim()) {
+      setStoredApiKey(apiKeyInput.trim());
+      setHasKey(true);
+    }
+    setApiKeyInput('');
     setIsApiKeyModalOpen(false);
   };
 
@@ -642,7 +646,7 @@ export default function App() {
 
               <div className="space-y-2">
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Enter your Google Gemini API key to activate AI movie curation and recommendations.
+                  Your Google Gemini API key is stored locally and masked to keep it private.
                 </p>
                 <a
                   href="https://aistudio.google.com/app/apikey"
@@ -654,12 +658,30 @@ export default function App() {
                 </a>
               </div>
 
-              <div className="space-y-2">
+              {hasKey && (
+                <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span className="text-slate-300 font-medium">Active Key:</span>
+                    <span className="font-mono text-emerald-400 font-semibold tracking-wider">
+                      {getMaskedApiKey()}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Protected</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                  {hasKey ? "Update API Key (Leave empty to keep active key)" : "Enter Gemini API Key"}
+                </label>
                 <input
                   type="password"
+                  autoComplete="off"
+                  spellCheck="false"
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="Paste your Gemini API key here..."
+                  placeholder={hasKey ? "•••••••••••••••• (Leave blank to keep)" : "Paste AIzaSy..."}
                   className="w-full px-4 py-3 rounded-xl bg-surface-container-lowest border border-outline-variant/20 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-all font-mono"
                 />
               </div>
