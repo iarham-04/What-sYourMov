@@ -60,3 +60,7 @@ export const Close = ({ className }: IconProps) => (
 export const Star = ({ className, fill }: IconProps) => (
   <span className={`material-symbols-outlined ${className}`} style={{ fontVariationSettings: `'FILL' ${fill ? 1 : 0}` }}>star</span>
 );
+
+export const Key = ({ className }: IconProps) => (
+  <span className={`material-symbols-outlined ${className}`}>key</span>
+);

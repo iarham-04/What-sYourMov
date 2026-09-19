@@ -13,11 +13,18 @@ import {
   ArrowUpward,
   AttachFile,
   Close,
-  Star
+  Star,
+  Key
 } from './components/Icons';
 import { cn } from './lib/utils';
 import { Movie, Message, ChatSession } from './types';
-import { getMovieRecommendations } from './services/gemini';
+import { 
+  getMovieRecommendations, 
+  getStoredApiKey, 
+  setStoredApiKey, 
+  removeStoredApiKey, 
+  hasApiKey 
+} from './services/gemini';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -66,6 +73,31 @@ export default function App() {
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [watchedList, setWatchedList] = useState<Movie[]>([]);
   const [activeTab, setActiveTab] = useState<'discover' | 'watchlist' | 'watched'>('discover');
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [hasKey, setHasKey] = useState(false);
+
+  useEffect(() => {
+    setHasKey(hasApiKey());
+  }, []);
+
+  const handleOpenApiKeyModal = () => {
+    setApiKeyInput(getStoredApiKey());
+    setIsApiKeyModalOpen(true);
+  };
+
+  const handleSaveApiKey = () => {
+    setStoredApiKey(apiKeyInput.trim());
+    setHasKey(hasApiKey());
+    setIsApiKeyModalOpen(false);
+  };
+
+  const handleRemoveApiKey = () => {
+    removeStoredApiKey();
+    setApiKeyInput('');
+    setHasKey(false);
+    setIsApiKeyModalOpen(false);
+  };
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -89,6 +121,11 @@ export default function App() {
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
+
+    if (!hasApiKey()) {
+      setIsApiKeyModalOpen(true);
+      return;
+    }
 
     let sessionId = currentSessionId;
     if (!sessionId) {
@@ -115,18 +152,19 @@ export default function App() {
         ? { ...s, messages: [...s.messages, userMessage], title: s.messages.length === 0 ? input.slice(0, 30) : s.title } 
         : s
     ));
+    const currentPrompt = input;
     setInput('');
     setIsLoading(true);
 
     try {
       const history = currentSession?.messages.map(m => ({ role: m.role, content: m.content })) || [];
-      const result = await getMovieRecommendations(input, history);
+      const result = await getMovieRecommendations(currentPrompt, history);
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: result.analysis,
-        movies: result.recommendations.map((m: any, i: number) => ({ ...m, id: `${Date.now()}-${i}` })),
+        movies: result.recommendations?.map((m: any, i: number) => ({ ...m, id: `${Date.now()}-${i}` })) || [],
         timestamp: Date.now()
       };
 
@@ -135,8 +173,29 @@ export default function App() {
           ? { ...s, messages: [...s.messages, aiMessage] } 
           : s
       ));
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to get recommendations:", error);
+      const isMissingKey = error?.message === "GEMINI_KEY_MISSING";
+      const errorContent = isMissingKey
+        ? "⚠️ **Gemini API Key Required**: Please configure your API key to get personalized movie recommendations."
+        : `⚠️ **Unable to generate recommendations**: ${error?.message || "Failed to reach Gemini API. Please check your key or try again."}`;
+
+      const aiErrorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: errorContent,
+        timestamp: Date.now()
+      };
+
+      setSessions(prev => prev.map(s => 
+        s.id === sessionId 
+          ? { ...s, messages: [...s.messages, aiErrorMessage] } 
+          : s
+      ));
+
+      if (isMissingKey) {
+        setIsApiKeyModalOpen(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -211,6 +270,14 @@ export default function App() {
             <span className="hidden md:inline font-headline text-sm font-medium">Watched</span>
           </button>
 
+          <button 
+            onClick={handleOpenApiKeyModal}
+            className="w-full flex items-center gap-4 py-3 px-6 text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all duration-300 group"
+          >
+            <Key />
+            <span className="hidden md:inline font-headline text-sm font-medium">API Key</span>
+          </button>
+
           <div className="pt-4 px-6">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">History</p>
             <div className="space-y-1">
@@ -254,6 +321,17 @@ export default function App() {
               />
             </div>
             <div className="flex items-center gap-4 text-slate-400">
+              <button
+                onClick={handleOpenApiKeyModal}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 hover:border-primary/40 transition-all text-xs"
+                title="Configure Gemini API Key"
+              >
+                <Key className="text-sm text-primary" />
+                <span className="hidden sm:inline font-medium text-slate-200">
+                  {hasKey ? "API Key Set" : "Set API Key"}
+                </span>
+                <span className={cn("w-2 h-2 rounded-full", hasKey ? "bg-emerald-400" : "bg-amber-400 animate-pulse")} />
+              </button>
               <Notifications className="hover:text-primary cursor-pointer transition-colors" />
               <AccountCircle className="hover:text-primary cursor-pointer transition-colors" />
             </div>
@@ -531,6 +609,88 @@ export default function App() {
               </div>
             </div>
           </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* API Key Configuration Modal */}
+      <AnimatePresence>
+        {isApiKeyModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="w-full max-w-md bg-[#13151b] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                    <Key className="text-xl" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-headline font-bold text-white">Gemini API Key</h3>
+                    <p className="text-xs text-slate-400">Stored privately in your browser</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsApiKeyModalOpen(false)}
+                  className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                >
+                  <Close className="text-sm" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Enter your Google Gemini API key to activate AI movie curation and recommendations.
+                </p>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                >
+                  Get a free Gemini API key from Google AI Studio &rarr;
+                </a>
+              </div>
+
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="Paste your Gemini API key here..."
+                  className="w-full px-4 py-3 rounded-xl bg-surface-container-lowest border border-outline-variant/20 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-all font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                {hasKey && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveApiKey}
+                    className="px-4 py-2 text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors mr-auto"
+                  >
+                    Remove Key
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsApiKeyModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveApiKey}
+                  className="px-5 py-2 text-xs font-headline font-bold bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-lg shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                >
+                  Save API Key
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
