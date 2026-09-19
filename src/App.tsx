@@ -180,9 +180,20 @@ export default function App() {
     } catch (error: any) {
       console.error("Failed to get recommendations:", error);
       const isMissingKey = error?.message === "GEMINI_KEY_MISSING";
+      let errorDetail = error?.message || "Failed to reach Gemini API. Please check your key or try again.";
+      try {
+        const jsonStart = errorDetail.indexOf('{');
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(errorDetail.slice(jsonStart));
+          if (parsed?.error?.message) {
+            errorDetail = parsed.error.message;
+          }
+        }
+      } catch {}
+
       const errorContent = isMissingKey
         ? "⚠️ **Gemini API Key Required**: Please configure your API key to get personalized movie recommendations."
-        : `⚠️ **Unable to generate recommendations**: ${error?.message || "Failed to reach Gemini API. Please check your key or try again."}`;
+        : `⚠️ **Unable to generate recommendations**: ${errorDetail}`;
 
       const aiErrorMessage: Message = {
         id: (Date.now() + 1).toString(),

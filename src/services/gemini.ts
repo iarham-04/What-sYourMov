@@ -93,7 +93,11 @@ export async function getMovieRecommendations(prompt: string, history: { role: s
     throw new Error("GEMINI_KEY_MISSING");
   }
 
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash"];
+  const modelsToTry = [
+    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+    "gemini-3.1-pro-preview"
+  ];
   
   const contents = [
     ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.content }] })),
