@@ -94,9 +94,9 @@ export async function getMovieRecommendations(prompt: string, history: { role: s
   }
 
   const modelsToTry = [
-    "gemini-3.6-flash",
     "gemini-2.5-flash",
-    "gemini-3.1-pro-preview"
+    "gemini-3.6-flash",
+    "gemini-1.5-flash"
   ];
   
   const contents = [
@@ -120,20 +120,12 @@ export async function getMovieRecommendations(prompt: string, history: { role: s
             Focus on cinematography, mood, and philosophical themes.
             Always provide 3 recommendations.
             
-            CRITICAL: You MUST provide a REAL, WORKING URL for the official movie poster. 
-            Use the googleSearch tool to find the EXACT poster image URL. 
-            
-            STEPS TO FIND POSTER:
-            1. Search for "[Movie Name] [Year] official poster image direct link".
-            2. Look for URLs from:
-               - image.tmdb.org (e.g., https://image.tmdb.org/t/p/w500/...)
-               - m.media-amazon.com (e.g., https://m.media-amazon.com/images/M/...)
-               - wikimedia.org
-            3. Ensure the URL ends in .jpg, .jpeg, or .png.
-            4. DO NOT hallucinate or make up a URL. If you cannot find a direct image link, provide a high-quality descriptive Unsplash URL as a last resort, but you MUST try to find the real one first.`,
+            For each movie recommendation:
+            - title, year, genre (array), rating (e.g. "8.5/10"), director, runtime, releaseDate, tags (array), isMustWatch (boolean).
+            - description: An engaging analysis of the film's visual and narrative qualities.
+            - posterUrl: An official movie poster image URL (from TMDB https://image.tmdb.org/t/p/w500/... or Wikimedia/IMDb) or a cinematic poster image URL.`,
             responseMimeType: "application/json",
-            responseSchema: responseSchema as any,
-            tools: [{ googleSearch: {} }]
+            responseSchema: responseSchema as any
           }
         });
 
